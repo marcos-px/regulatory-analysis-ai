@@ -21,3 +21,4 @@ azure-cosmos
 azure-cognitiveservices-language-textanalytics 
 msrest
 azure-ai-textanalytics
+openai

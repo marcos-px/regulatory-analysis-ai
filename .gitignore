@@ -1,1 +1,7 @@
 regulatory-analysis-env
+src/__pycache__/
+__pycache__/
+src/analyzer/__pycache__/
+src/analyzer/regulatory_analysis.py
+src/__init__.py
+src/analyzer/__init__.py
