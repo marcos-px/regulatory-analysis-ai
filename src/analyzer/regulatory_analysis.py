@@ -32,6 +32,7 @@ from gremlin_python.process.strategies import *
 from gremlin_python.structure.graph import Graph
 from collections import defaultdict
 from .ai_provider import AIProvider
+from .gnn_processor import GNNProcessor
 
 load_dotenv()
 
@@ -111,15 +112,13 @@ class RegulatoryChangeAnalyzer:
             print("AVISO: A chave da API Azure AI para completions não está definida")
             print("Por favor, defina a variável de ambiente AZURE_AI_API_KEY no arquivo .env")
 
-        print(f"Configuração Azure OpenAI para embeddings:")
-        print(f"  Endpoint: {self.azure_openai_endpoint}")
-        print(f"  Embedding Model: {self.azure_openai_embedding_model}")
-        print(f"  API Key: {'Definida' if self.azure_openai_key else 'Não definida'}")
+        self.gnn_processor = GNNProcessor(
+            embedding_dim=1536,
+            hidden_dim=256,
+            output_dim=128
+        )
 
-        print(f"Configuração Azure AI para completions:")
-        print(f"  Endpoint: {self.azure_ai_endpoint}")
-        print(f"  Completion Model: {self.azure_ai_completion_model}")
-        print(f"  API Key: {'Definida' if self.azure_ai_key else 'Não definida'}")
+        self.gnn_embeddings = {}
 
         try:
             self.embeddings_client = EmbeddingsClient(
@@ -147,153 +146,6 @@ class RegulatoryChangeAnalyzer:
         self.gremlin_conn = None
         self.g = None
     
-    def _save_embedding_to_blob(self, text, regulation_id):
-        """Método auxiliar para salvar embedding no Blob Storage"""
-        try:
-            container_name = "embeddings"
-            try:
-                container_client = self.blob_service_client.get_container_client(container_name)
-                if not container_client.exists():
-                    container_client = self.blob_service_client.create_container(container_name)
-            except Exception as e:
-                print(f"Aviso: Erro ao verificar/criar container de embeddings: {str(e)}")
-                container_client = self.blob_service_client.create_container(container_name)
-            
-            embedding = self.get_text_embeddings(text)
-            
-            blob_name = f"{regulation_id}_embedding.npy"
-            blob_client = container_client.get_blob_client(blob_name)
-            
-            embedding_bytes = io.BytesIO()
-            np.save(embedding_bytes, embedding)
-            embedding_bytes.seek(0)
-            
-            blob_client.upload_blob(embedding_bytes, overwrite=True)
-            print(f"Embedding saved for {regulation_id}")
-
-        except Exception as e:
-            print(f"Aviso: Erro ao salvar embedding: {str(e)}")
-
-    def _save_relationship_to_blob(self, source_id, target_id, similarity, changes):
-        """Método auxiliar para salvar relacionamento no Blob Storage"""
-        try:
-            container_name = "relationships"
-            try:
-                container_client = self.blob_service_client.get_container_client(container_name)
-                if not container_client.exists():
-                    container_client = self.blob_service_client.create_container(container_name)
-            except Exception as e:
-                print(f"Aviso: Erro ao verificar/criar container de relacionamentos: {str(e)}")
-                container_client = self.blob_service_client.create_container(container_name)
-            
-            relationship_data = {
-                "source": source_id,
-                "target": target_id,
-                "similarity": float(similarity),
-                "changes": changes
-            }
-            
-            blob_name = f"{source_id}_to_{target_id}.json"
-            blob_client = container_client.get_blob_client(blob_name)
-            
-            blob_client.upload_blob(json.dumps(relationship_data), overwrite=True)
-            print(f"Relationship saved: {source_id} -> {target_id}")
-        except Exception as e:
-            print(f"Aviso: Erro ao salvar relacionamento: {str(e)}")
-    
-    async def _get_comparison_analysis_with_gpt(self, text1, text2, similarity, key_differences):
-        """Obter análise detalhada da comparação usando o novo endpoint Azure AI"""
-        try:
-            differences_text = "\n".join([f"- {diff}" for diff in key_differences])
-            
-            prompt = f"""Analise duas versões de um texto regulatório e explique as mudanças e seus possíveis impactos:
-
-    TEXTO ORIGINAL:
-    {text1}
-
-    TEXTO MODIFICADO:
-    {text2}
-
-    SIMILARIDADE CALCULADA: {similarity*100:.1f}%
-
-    DIFERENÇAS IDENTIFICADAS:
-    {differences_text}
-
-    Por favor, forneça:
-    1. Uma explicação das mudanças principais
-    2. O possível propósito ou intenção por trás dessas mudanças
-    3. O impacto potencial dessas mudanças
-    4. Tendências observáveis que poderiam indicar futuras direções regulatórias
-
-    Formate sua resposta como JSON seguindo exatamente esta estrutura:
-    {{
-        "main_changes": "Explicação concisa das principais mudanças",
-        "purpose": "Análise do propósito ou intenção por trás das mudanças",
-        "impact": "Avaliação do impacto potencial dessas mudanças",
-        "future_trends": "Indicação de possíveis tendências regulatórias futuras"
-    }}
-    """
-
-            endpoint = f"{self.azure_ai_endpoint}/models/chat/completions?api-version=2024-05-01-preview"
-            
-            headers = {
-                "Content-Type": "application/json",
-                "api-key": self.azure_ai_key,
-                "x-ms-model-mesh-model-name": "Phi-4-multimodal-instruct"
-            }
-            
-            data = {
-                "messages": [
-                    {"role": "system", "content": "Você é um especialista em análise de tendências regulatórias."},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.7,
-                "max_tokens": 800,
-                "model": "Phi-4-multimodal-instruct"
-            }
-            
-            print(f"Chamando API Azure AI para análise de comparação...")
-            print(f"Endpoint: {endpoint}")
-            print(f"Modelo: Phi-4-multimodal-instruct")
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(endpoint, headers=headers, json=data) as response:
-                    status = response.status
-                    response_text = await response.text()
-                    print(f"Status da resposta: {status}")
-                    print(f"Resposta bruta: {response_text[:200]}...")
-                    
-                    if status == 200:
-                        result = json.loads(response_text)
-                        content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
-                        
-                        try:
-                            import re
-                            json_match = re.search(r'(\{[\s\S]*\})', content)
-                            if json_match:
-                                json_str = json_match.group(1)
-                                analysis = json.loads(json_str)
-                                return analysis
-                            else:
-                                print("JSON não encontrado na resposta")
-                                return {
-                                    "main_changes": "Não foi possível analisar as mudanças",
-                                    "purpose": "Indeterminado",
-                                    "impact": "Indeterminado",
-                                    "future_trends": "Indeterminado"
-                                }
-                        except Exception as e:
-                            print(f"Erro ao processar análise de completions: {str(e)}")
-                            return None
-                    else:
-                        print(f"Erro na API de completions: {status} - {response_text}")
-                        return None
-        except Exception as e:
-            import traceback
-            print(f"Erro ao obter análise de completions: {str(e)}")
-            print(traceback.format_exc())
-            return None
-
     async def init_gremlin_connection(self):
         """Método de inicialização desativado - usando apenas armazenamento local"""
         print("Conexão Gremlin desativada - usando apenas grafo local e Blob Storage")
@@ -355,8 +207,11 @@ class RegulatoryChangeAnalyzer:
             return random_embedding
 
     async def predict_future_changes_with_gpt(self, num_predictions=1):
-        """Prever mudanças futuras usando GPT-4o com análise de embeddings"""
+        """Prever mudanças futuras usando GNN para análise estrutural e GPT para geração"""
         try:
+            if not self.gnn_embeddings:
+                await self.enrich_embeddings_with_gnn()
+            
             regulations = await self.get_all_regulations()
             sorted_regulations = sorted(regulations, key=lambda x: x.get('date', ''))
             
@@ -365,6 +220,8 @@ class RegulatoryChangeAnalyzer:
                 return []
             
             latest_regulation = sorted_regulations[-1]
+            
+            structural_insights = self._extract_structural_insights_from_gnn()
             
             regulations_history = []
             for i, reg in enumerate(sorted_regulations):
@@ -397,21 +254,326 @@ class RegulatoryChangeAnalyzer:
                     "changes": changes_summary
                 })
             
-            prompt = self._build_prediction_prompt_for_gpt(
+            prompt = self._build_prediction_prompt_for_gpt_with_gnn(
                 regulations_history=regulations_history,
                 changes_history=changes_history,
-                latest_regulation=latest_regulation
+                latest_regulation=latest_regulation,
+                structural_insights=structural_insights
             )
             
             predictions = await self._get_gpt_predictions(prompt)
             return predictions
-            
+                
         except Exception as e:
-            print(f"Erro ao gerar previsões com GPT: {str(e)}")
+            print(f"Erro ao gerar previsões com GNN e GPT: {str(e)}")
             return await self.predict_future_changes(num_predictions)
 
-    def _build_prediction_prompt_for_gpt(self, regulations_history, changes_history, latest_regulation):
-        """Construir prompt para o GPT-4o baseado no histórico e embeddings"""
+    def _extract_structural_insights_from_gnn(self):
+
+        insights = []
+        
+        if not self.gnn_embeddings:
+            return insights
+        
+        node_ids = list(self.gnn_embeddings.keys())
+        embeddings = np.array([self.gnn_embeddings[node_id] for node_id in node_ids])
+        
+        from sklearn.cluster import KMeans
+        n_clusters = min(3, len(node_ids))
+        if len(node_ids) >= n_clusters:
+            kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+            clusters = kmeans.fit_predict(embeddings)
+            
+            cluster_nodes = {}
+            for i, cluster_id in enumerate(clusters):
+                if cluster_id not in cluster_nodes:
+                    cluster_nodes[cluster_id] = []
+                cluster_nodes[cluster_id].append(node_ids[i])
+            
+            for cluster_id, nodes in cluster_nodes.items():
+                cluster_texts = []
+                dates = []
+                for node in nodes:
+                    node_data = self.knowledge_graph.nodes[node]
+                    if 'text' in node_data:
+                        cluster_texts.append(node_data['text'])
+                    if 'date' in node_data:
+                        dates.append(node_data['date'])
+                
+                common_phrases = set()
+                for node in nodes:
+                    node_data = self.knowledge_graph.nodes[node]
+                    if 'key_phrases' in node_data:
+                        if not common_phrases:
+                            common_phrases = set(node_data['key_phrases'])
+                        else:
+                            common_phrases &= set(node_data['key_phrases'])
+                
+                insight = {
+                    "cluster_id": int(cluster_id),
+                    "node_count": len(nodes),
+                    "dates": dates,
+                    "common_phrases": list(common_phrases)[:5]
+                }
+                insights.append(insight)
+        
+        if len(node_ids) >= 2:
+            nodes_with_dates = []
+            for node in node_ids:
+                node_data = self.knowledge_graph.nodes[node]
+                if 'date' in node_data:
+                    nodes_with_dates.append((node, node_data['date']))
+            
+            sorted_nodes = sorted(nodes_with_dates, key=lambda x: x[1])
+            if len(sorted_nodes) >= 2:
+                first_node, _ = sorted_nodes[0]
+                last_node, _ = sorted_nodes[-1]
+                
+                first_emb = self.gnn_embeddings[first_node]
+                last_emb = self.gnn_embeddings[last_node]
+                
+                direction = last_emb - first_emb
+                
+                projections = {}
+                origin = first_emb
+                direction_norm = np.linalg.norm(direction)
+                
+                if direction_norm > 0:
+                    unit_direction = direction / direction_norm
+                    
+                    for node in node_ids:
+                        emb = self.gnn_embeddings[node]
+                        node_vector = emb - origin
+                        projection = np.dot(node_vector, unit_direction)
+                        projections[node] = projection
+                    
+                    sorted_by_projection = sorted(projections.items(), key=lambda x: x[1])
+                    
+                    direction_insight = {
+                        "type": "evolution_direction",
+                        "description": "Evolução direcional das regulações",
+                        "progression": [node for node, _ in sorted_by_projection]
+                    }
+                    
+                    insights.append(direction_insight)
+        
+        return insights
+
+    def _save_embedding_to_blob(self, text, regulation_id):
+        """Método auxiliar para salvar embedding no Blob Storage"""
+        try:
+            container_name = "embeddings"
+            try:
+                container_client = self.blob_service_client.get_container_client(container_name)
+                if not container_client.exists():
+                    container_client = self.blob_service_client.create_container(container_name)
+            except Exception as e:
+                print(f"Aviso: Erro ao verificar/criar container de embeddings: {str(e)}")
+                container_client = self.blob_service_client.create_container(container_name)
+            
+            embedding = self.get_text_embeddings(text)
+            
+            blob_name = f"{regulation_id}_embedding.npy"
+            blob_client = container_client.get_blob_client(blob_name)
+            
+            embedding_bytes = io.BytesIO()
+            np.save(embedding_bytes, embedding)
+            embedding_bytes.seek(0)
+            
+            blob_client.upload_blob(embedding_bytes, overwrite=True)
+            print(f"Embedding saved for {regulation_id}")
+
+        except Exception as e:
+            print(f"Aviso: Erro ao salvar embedding: {str(e)}")
+
+    def _save_relationship_to_blob(self, source_id, target_id, similarity, changes):
+        """Método auxiliar para salvar relacionamento no Blob Storage"""
+        try:
+            container_name = "relationships"
+            try:
+                container_client = self.blob_service_client.get_container_client(container_name)
+                if not container_client.exists():
+                    container_client = self.blob_service_client.create_container(container_name)
+            except Exception as e:
+                print(f"Aviso: Erro ao verificar/criar container de relacionamentos: {str(e)}")
+                container_client = self.blob_service_client.create_container(container_name)
+            
+            relationship_data = {
+                "source": source_id,
+                "target": target_id,
+                "similarity": float(similarity),
+                "changes": changes
+            }
+            
+            blob_name = f"{source_id}_to_{target_id}.json"
+            blob_client = container_client.get_blob_client(blob_name)
+            
+            blob_client.upload_blob(json.dumps(relationship_data), overwrite=True)
+            print(f"Relationship saved: {source_id} -> {target_id}")
+        except Exception as e:
+            print(f"Aviso: Erro ao salvar relacionamento: {str(e)}")
+    
+    async def enrich_embeddings_with_gnn(self):
+
+        try:
+            print("Iniciando enriquecimento de embeddings com GNN...")
+            
+            await self._ensure_graph_has_embeddings()
+            
+            graph_data, node_mapping = self.gnn_processor.networkx_to_pytorch_geometric(
+                self.knowledge_graph
+            )
+            
+            self.gnn_processor.init_model(model_type='gcn')
+            self.gnn_processor.train(graph_data, epochs=50)
+            
+            self.gnn_embeddings = self.gnn_processor.get_node_embeddings(
+                graph_data, node_mapping
+            )
+            
+            print(f"Enriquecimento com GNN concluído. Processados {len(self.gnn_embeddings)} nós.")
+            return True
+        except Exception as e:
+            print(f"Erro ao enriquecer embeddings com GNN: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            return False
+
+    async def _ensure_graph_has_embeddings(self):
+
+        for node in self.knowledge_graph.nodes():
+            if 'embedding' not in self.knowledge_graph.nodes[node]:
+                node_data = self.knowledge_graph.nodes[node]
+                if 'text' in node_data:
+                    embedding = self.get_text_embeddings(node_data['text'])
+                    self.knowledge_graph.nodes[node]['embedding'] = embedding
+                else:
+                    print(f"Aviso: Nó {node} não tem texto para gerar embedding")
+                    self.knowledge_graph.nodes[node]['embedding'] = np.zeros(1024)
+
+    def calculate_similarity_with_gnn(self, text1, text2, use_gnn=True):
+
+        embedding1 = self.get_text_embeddings(text1)
+        embedding2 = self.get_text_embeddings(text2)
+        
+        if not use_gnn or not self.gnn_embeddings:
+            return cosine_similarity([embedding1], [embedding2])[0][0]
+        
+        reg_id1 = self._find_regulation_by_text(text1)
+        reg_id2 = self._find_regulation_by_text(text2)
+        
+        if reg_id1 and reg_id2 and reg_id1 in self.gnn_embeddings and reg_id2 in self.gnn_embeddings:
+            gnn_emb1 = self.gnn_embeddings[reg_id1]
+            gnn_emb2 = self.gnn_embeddings[reg_id2]
+            similarity = self.gnn_processor.predict_similarity(gnn_emb1, gnn_emb2)
+            return similarity
+        
+        return cosine_similarity([embedding1], [embedding2])[0][0]
+
+    def _find_regulation_by_text(self, text):
+        """
+        Encontra o ID de uma regulação pelo seu texto.
+        """
+        for node, data in self.knowledge_graph.nodes(data=True):
+            if data.get('text') == text:
+                return node
+        return None
+
+    async def _get_comparison_analysis_with_gpt(self, text1, text2, similarity, key_differences):
+        """Obter análise detalhada da comparação usando o novo endpoint Azure AI"""
+        try:
+            differences_text = "\n".join([f"- {diff}" for diff in key_differences])
+            
+            prompt = f"""Analise duas versões de um texto regulatório e explique as mudanças e seus possíveis impactos:
+
+    TEXTO ORIGINAL:
+    {text1}
+
+    TEXTO MODIFICADO:
+    {text2}
+
+    SIMILARIDADE CALCULADA: {similarity*100:.1f}%
+
+    DIFERENÇAS IDENTIFICADAS:
+    {differences_text}
+
+    Por favor, forneça:
+    1. Uma explicação das mudanças principais
+    2. O possível propósito ou intenção por trás dessas mudanças
+    3. O impacto potencial dessas mudanças
+    4. Tendências observáveis que poderiam indicar futuras direções regulatórias
+
+    Formate sua resposta como JSON seguindo exatamente esta estrutura:
+    {{
+        "main_changes": "Explicação concisa das principais mudanças",
+        "purpose": "Análise do propósito ou intenção por trás das mudanças",
+        "impact": "Avaliação do impacto potencial dessas mudanças",
+        "future_trends": "Indicação de possíveis tendências regulatórias futuras"
+    }}
+    """
+
+            endpoint = f"{self.azure_ai_endpoint}/models/chat/completions?api-version=2024-05-01-preview"
+            
+            headers = {
+                "Content-Type": "application/json",
+                "api-key": self.azure_ai_key,
+                "x-ms-model-mesh-model-name": "Phi-4-multimodal-instruct"
+            }
+            
+            data = {
+                "messages": [
+                    {"role": "system", "content": "Você é um especialista em análise de tendências regulatórias."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.9,
+                "max_tokens": 8000,
+                "model": "Phi-4-multimodal-instruct"
+            }
+            
+            print(f"Chamando API Azure AI para análise de comparação...")
+            print(f"Endpoint: {endpoint}")
+            print(f"Modelo: Phi-4-multimodal-instruct")
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(endpoint, headers=headers, json=data) as response:
+                    status = response.status
+                    response_text = await response.text()
+                    print(f"Status da resposta: {status}")
+                    print(f"Resposta bruta: {response_text[:200]}...")
+                    
+                    if status == 200:
+                        result = json.loads(response_text)
+                        content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
+                        
+                        try:
+                            import re
+                            json_match = re.search(r'(\{[\s\S]*\})', content)
+                            if json_match:
+                                json_str = json_match.group(1)
+                                analysis = json.loads(json_str)
+                                return analysis
+                            else:
+                                print("JSON não encontrado na resposta")
+                                return {
+                                    "main_changes": "Não foi possível analisar as mudanças",
+                                    "purpose": "Indeterminado",
+                                    "impact": "Indeterminado",
+                                    "future_trends": "Indeterminado"
+                                }
+                        except Exception as e:
+                            print(f"Erro ao processar análise de completions: {str(e)}")
+                            return None
+                    else:
+                        print(f"Erro na API de completions: {status} - {response_text}")
+                        return None
+        except Exception as e:
+            import traceback
+            print(f"Erro ao obter análise de completions: {str(e)}")
+            print(traceback.format_exc())
+            return None
+
+    def _build_prediction_prompt_for_gpt_with_gnn(self, regulations_history, changes_history, latest_regulation, structural_insights):
+        """Construir prompt para o GPT-4o baseado no histórico, embeddings e insights de GNN"""
         regulations_text = "\n\n".join(regulations_history)
         
         changes_text = ""
@@ -419,6 +581,31 @@ class RegulatoryChangeAnalyzer:
             changes_text += f"\nMudanças de {change['from']} para {change['to']}:\n"
             for item in change['changes']:
                 changes_text += f"- {item}\n"
+        
+        # Extrair insights estruturais do GNN
+        insights_text = "\nINSIGHTS ESTRUTURAIS DE GNN:\n"
+        
+        # Adicionar insights de clusters
+        cluster_insights = [i for i in structural_insights if 'cluster_id' in i]
+        if cluster_insights:
+            insights_text += "\nGrupos de regulações similares identificados:\n"
+            for i, insight in enumerate(cluster_insights):
+                insights_text += f"Grupo {i+1}: "
+                if insight['common_phrases']:
+                    insights_text += f"Temas comuns: {', '.join(insight['common_phrases'][:3])}"
+                insights_text += f" ({insight['node_count']} regulações)\n"
+        
+        # Adicionar insights direcionais
+        direction_insights = [i for i in structural_insights if i.get('type') == 'evolution_direction']
+        if direction_insights:
+            insights_text += "\nDireção de evolução regulatória detectada:\n"
+            for insight in direction_insights:
+                progression = insight['progression']
+                if len(progression) >= 2:
+                    insights_text += f"Progressão: {' -> '.join(progression[:3])}"
+                    if len(progression) > 3:
+                        insights_text += f" -> ... -> {progression[-1]}"
+                    insights_text += "\n"
         
         number_pattern = r'(\d+)%'
         percentage_values = []
@@ -442,39 +629,41 @@ class RegulatoryChangeAnalyzer:
         
         prompt = f"""Você é um especialista em análise de tendências regulatórias com conhecimento profundo de regulações financeiras. Analise o histórico de textos regulatórios abaixo e preveja as prováveis mudanças futuras.
 
-HISTÓRICO DE REGULAÇÕES:
-{regulations_text}
+    HISTÓRICO DE REGULAÇÕES:
+    {regulations_text}
 
-ANÁLISE DE MUDANÇAS:
-{changes_text}
+    ANÁLISE DE MUDANÇAS:
+    {changes_text}
 
-{trend_analysis}
+    {trend_analysis}
 
-REGULAÇÃO MAIS RECENTE:
-{latest_regulation['text']}
+    {insights_text}
 
-Com base nos dados acima, gere uma previsão estruturada das mudanças mais prováveis que ocorrerão na próxima iteração desta regulação. Considere padrões numéricos, tendências de linguagem e contexto regulatório.
+    REGULAÇÃO MAIS RECENTE:
+    {latest_regulation['text']}
 
-Formate sua resposta como um JSON seguindo exatamente esta estrutura:
-[
-    {{
-        "type": "numerical",
-        "current_value": "valor atual (ex: 30%)",
-        "predicted_value": "valor previsto (ex: 40%)",
-        "confidence": valor de confiança entre 0.0 e 1.0,
-        "explanation": "Explicação detalhada da previsão"
-    }},
-    {{
-        "type": "textual",
-        "current_text": "texto atual",
-        "predicted_text": "texto previsto",
-        "confidence": valor de confiança entre 0.0 e 1.0,
-        "explanation": "Explicação detalhada da previsão"
-    }}
-]
+    Com base nos dados acima, incluindo os insights estruturais gerados por Graph Neural Networks, gere uma previsão estruturada das mudanças mais prováveis que ocorrerão na próxima iteração desta regulação. Considere padrões numéricos, tendências de linguagem, agrupamentos estruturais identificados e a direção de evolução regulatória.
 
-Gere apenas o JSON válido, sem texto introdutório ou de fechamento.
-"""
+    Formate sua resposta como um JSON seguindo exatamente esta estrutura:
+    [
+        {{
+            "type": "numerical",
+            "current_value": "valor atual (ex: 30%)",
+            "predicted_value": "valor previsto (ex: 40%)",
+            "confidence": valor de confiança entre 0.0 e 1.0,
+            "explanation": "Explicação detalhada da previsão, considerando os insights estruturais de GNN"
+        }},
+        {{
+            "type": "textual",
+            "current_text": "texto atual",
+            "predicted_text": "texto previsto",
+            "confidence": valor de confiança entre 0.0 e 1.0,
+            "explanation": "Explicação detalhada da previsão, considerando os insights estruturais de GNN"
+        }}
+    ]
+
+    Gere apenas o JSON válido, sem texto introdutório ou de fechamento.
+    """
         return prompt
 
     async def _get_gpt_predictions(self, prompt):
@@ -493,8 +682,8 @@ Gere apenas o JSON válido, sem texto introdutório ou de fechamento.
                     {"role": "system", "content": "Você é um especialista em análise de tendências regulatórias."},
                     {"role": "user", "content": prompt}
                 ],
-                "temperature": 0.7,
-                "max_tokens": 800,
+                "temperature": 0.9,
+                "max_tokens": 8000,
                 "model": "Phi-4-multimodal-instruct"
             }
             
@@ -1026,6 +1215,82 @@ Gere apenas o JSON válido, sem texto introdutório ou de fechamento.
         
         return serializable_changes
 
+    async def predict_future_changes_with_text(self, text, num_predictions=1):
+        """Prever mudanças futuras com base em um texto específico usando IA"""
+        try:
+            regulations = await self.get_all_regulations()
+            sorted_regulations = sorted(regulations, key=lambda x: x.get('date', ''))
+            
+            regulations_history = []
+            for i, reg in enumerate(sorted_regulations):
+                regulations_history.append(f"Regulação {i+1} ({reg['date']}): {reg['text']}")
+            
+            changes_history = []
+            for i in range(1, len(sorted_regulations)):
+                prev_reg = sorted_regulations[i-1]
+                curr_reg = sorted_regulations[i]
+                changes = self.extract_key_changes(prev_reg['text'], curr_reg['text'])
+                
+                changes_summary = []
+                if 'numerical_changes' in changes and changes['numerical_changes']:
+                    for pair in changes['numerical_changes']:
+                        if isinstance(pair, (list, tuple)) and len(pair) == 2:
+                            changes_summary.append(f"Alteração numérica: {pair[0]} → {pair[1]}")
+                
+                if 'text_diff_blocks' in changes:
+                    for block in changes['text_diff_blocks']:
+                        if block.get('opcode') == 'replace':
+                            changes_summary.append(f"Substituição: '{block.get('old_text', '')}' → '{block.get('new_text', '')}'")
+                        elif block.get('opcode') == 'insert':
+                            changes_summary.append(f"Adição: '{block.get('new_text', '')}'")
+                        elif block.get('opcode') == 'delete':
+                            changes_summary.append(f"Remoção: '{block.get('old_text', '')}'")
+                
+                changes_history.append({
+                    "from": prev_reg['date'],
+                    "to": curr_reg['date'],
+                    "changes": changes_summary
+                })
+            
+            key_phrases = self.analyze_key_phares(text)
+            
+            prompt = f"""Você é um especialista em análise de tendências regulatórias com conhecimento profundo de regulações financeiras. 
+            
+    HISTÓRICO DE REGULAÇÕES:
+    {regulations_history[-3:] if len(regulations_history) > 3 else regulations_history}
+
+    TEXTO ATUAL PARA PREVISÃO:
+    {text}
+
+    FRASES-CHAVE IDENTIFICADAS:
+    {', '.join(key_phrases) if key_phrases else 'Nenhuma frase-chave identificada'}
+
+    Com base no texto atual e no contexto histórico, gere {num_predictions} previsões específicas e detalhadas sobre como este texto regulatório poderá evoluir no futuro. 
+    Sua previsão deve:
+    1. Identificar trechos específicos do texto fornecido que provavelmente mudarão
+    2. Prever como esses trechos serão modificados (exemplo: percentuais que aumentarão/diminuirão, requisitos que serão flexibilizados/endurecidos, etc.)
+    3. Fornecer uma explicação contextual para cada previsão, baseada nas tendências observadas
+
+    Formate cada previsão como um objeto JSON seguindo exatamente esta estrutura:
+    {{
+        "type": "textual",
+        "current_text": "Trecho específico do texto atual que provavelmente mudará",
+        "predicted_text": "Como esse trecho provavelmente ficará na próxima versão",
+        "confidence": valor de confiança entre 0.0 e 1.0,
+        "explanation": "Explicação detalhada que justifica essa previsão"
+    }}
+
+    Suas previsões devem ser específicas, baseadas no texto fornecido, e não genéricas. Formate sua resposta como um array JSON contendo {num_predictions} objetos de previsão.
+            """
+            
+            predictions = await self._get_gpt_predictions(prompt)
+            return predictions
+        except Exception as e:
+            import traceback
+            print(f"Erro ao gerar previsões com texto específico: {str(e)}")
+            print(traceback.format_exc())
+            return []
+
     async def predict_future_changes(self, num_predictions=1):
         """Prever mudanças futuras com base nas tendências históricas usando IA"""
         if len(self.knowledge_graph.nodes) < 2:
@@ -1135,8 +1400,8 @@ Gere apenas o JSON válido, sem texto introdutório ou de fechamento.
                     {"role": "system", "content": "Você é um especialista em análise de tendências regulatórias."},
                     {"role": "user", "content": prompt}
                 ],
-                "temperature": 0.7,
-                "max_tokens": 800,
+                "temperature": 0.9,
+                "max_tokens": 8000,
                 "model": "Phi-4-multimodal-instruct"
             }
             

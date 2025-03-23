@@ -139,3 +139,6 @@ Key component interactions:
 5. Results are stored in both Cosmos DB (graph) and Blob Storage (embeddings)
 6. FastAPI endpoints provide access to analysis results
 7. The knowledge graph maintains relationships between regulations
+```
+
+Este README fornece uma visão geral completa do sistema, incluindo sua estrutura, como configurá-lo e usá-lo, além de solucionar problemas comuns. Ele destaca as principais funcionalidades e o fluxo de dados do sistema de análise regulatória.
