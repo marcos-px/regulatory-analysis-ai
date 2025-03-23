@@ -1,85 +1,81 @@
-# Regulatory Text Analysis API: Intelligent Analysis of Regulatory Changes
+# Análise de Textos Regulatórios com Graph Neural Networks (GNN)
 
-The Regulatory Text Analysis API is a sophisticated system that analyzes and tracks changes in regulatory texts using advanced natural language processing and graph-based analytics. It provides automated analysis of regulatory documents, extracts key changes, and builds a knowledge graph to track the evolution of regulations over time.
+A API de Análise de Textos Regulatórios é um sistema sofisticado que analisa e rastreia mudanças em documentos regulatórios utilizando processamento de linguagem natural avançado e análise baseada em grafos, com ênfase especial em Graph Neural Networks (GNN).
 
-The system combines multiple AI technologies including text embeddings, similarity analysis, and key phrase extraction to provide comprehensive insights into regulatory changes. It leverages Azure's AI services and graph database capabilities to deliver robust analysis capabilities including numerical change detection, entity tracking, and text difference analysis. The API is built with FastAPI for high performance and easy integration, making it ideal for compliance teams, legal analysts, and regulatory technology solutions.
+O sistema combina múltiplas tecnologias de inteligência artificial, incluindo embeddings de texto, análise de similaridade e extração de frases-chave para fornecer insights abrangentes sobre mudanças regulatórias. Utiliza serviços de IA do Azure e capacidades de processamento de grafos para entregar análises robustas, incluindo detecção de mudanças numéricas, rastreamento de entidades e análise de diferenças textuais.
 
-## Repository Structure
+## Estrutura do Repositório
 ```
 .
-├── requirements.txt          # Python dependencies including AI/ML libraries and Azure SDK components
-└── src/                     # Source code directory
-    ├── analyzer/            # Core analysis module directory
-    │   └── regulatory_analysis.py    # Main regulatory analysis implementation
-    └── app.py              # FastAPI application entry point and API definition
+├── requirements.txt          # Dependências Python, incluindo bibliotecas de IA/ML e componentes Azure SDK
+└── src/                     # Diretório de código-fonte
+    ├── analyzer/            # Módulo principal de análise
+    │   └── regulatory_analysis.py    # Implementação principal da análise regulatória
+    └── app.py              # Ponto de entrada da aplicação FastAPI e definição da API
 ```
 
-## Usage Instructions
-### Prerequisites
-- Python 3.7 or higher
-- Azure subscription with the following services configured:
+## Instruções de Uso
+### Pré-requisitos
+- Python 3.7 ou superior
+- Assinatura Azure com os seguintes serviços configurados:
   - Azure OpenAI
   - Azure Language Service
-  - Azure Cosmos DB with Gremlin API
+  - Azure Cosmos DB
   - Azure Blob Storage
-- Environment variables set for Azure services:
+- Variáveis de ambiente configuradas para serviços Azure:
   - AZURE_LANGUAGE_ENDPOINT
   - AZURE_LANGUAGE_KEY
   - AZURE_STORAGE_CONNECTION_STRING
-  - COSMOS_GREMLIN_ENDPOINT
-  - COSMOS_GREMLIN_KEY
-  - COSMOS_GREMLIN_DATABASE
-  - COSMOS_GREMLIN_COLLECTION
   - AZURE_OPENAI_ENDPOINT
   - AZURE_OPENAI_KEY
   - AZURE_OPENAI_DEPLOYMENT
 
-### Installation
-1. Clone the repository:
+### Instalação
+1. Clone o repositório:
 ```bash
-git clone <repository-url>
-cd <repository-name>
+git clone <url-do-repositorio>
+cd <nome-do-repositorio>
 ```
 
-2. Create and activate a virtual environment:
+2. Crie e ative um ambiente virtual:
 ```bash
-# On Linux/MacOS
+# Linux/MacOS
 python -m venv regulatory-analysis-env
 source regulatory-analysis-env/bin/activate
 
-# On Windows
+# Windows
 python -m venv regulatory-analysis-env
 regulatory-analysis-env\Scripts\activate
 ```
 
-3. Install dependencies:
+3. Instale as dependências:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Download the Portuguese language model for spaCy:
+4. Baixe o modelo de linguagem português para spaCy:
 ```bash
 python -m spacy download pt_core_news_lg
 ```
 
-### Quick Start
-1. Start the API server:
+### Início Rápido
+1. Inicie o servidor da API:
 ```bash
 cd src
 python app.py
 ```
 
-2. The API will be available at `http://localhost:8000`
+2. A API estará disponível em `http://localhost:8000`
 
-3. Test the API health:
+3. Teste a saúde da API:
 ```bash
 curl http://localhost:8000/
 ```
 
-### More Detailed Examples
-The RegulatoryChangeAnalyzer class provides several key methods:
+### Exemplos Detalhados
+A classe RegulatoryChangeAnalyzer fornece métodos-chave:
 
-1. Analyzing text changes:
+1. Analisando mudanças de texto:
 ```python
 from analyzer.regulatory_analysis import RegulatoryChangeAnalyzer
 
@@ -87,58 +83,62 @@ analyzer = RegulatoryChangeAnalyzer()
 changes = analyzer.extract_key_changes(old_text, new_text)
 ```
 
-2. Adding regulations to the knowledge graph:
+2. Adicionando regulações ao grafo de conhecimento com GNN:
 ```python
-analyzer.add_to_knowledge_graph(
+analyzer.add_to_knowledge_graph_gnn(
     regulation_id="REG001",
     date="2024-02-20",
-    text="Regulation text content",
+    text="Conteúdo do texto regulatório",
     previous_regulation_id="REG000"
 )
 ```
 
-### Troubleshooting
-Common issues and solutions:
+### Solução de Problemas
+Problemas comuns e soluções:
 
-1. Azure Service Connection Issues
-- Problem: Unable to connect to Azure services
-- Solution: Verify environment variables are set correctly:
-```bash
-echo $AZURE_LANGUAGE_ENDPOINT
-echo $AZURE_OPENAI_ENDPOINT
-```
+1. Problemas de Conexão com Serviços Azure
+- Problema: Incapaz de conectar aos serviços Azure
+- Solução: Verifique se as variáveis de ambiente estão configuradas corretamente
 
-2. Spacy Model Loading Error
-- Problem: "Can't find model 'pt_core_news_lg'"
-- Solution: Install the model manually:
+2. Erro de Carregamento do Modelo Spacy
+- Problema: "Modelo 'pt_core_news_lg' não encontrado"
+- Solução: Instale o modelo manualmente
 ```bash
 python -m spacy download pt_core_news_lg
 ```
 
-3. Memory Issues with Large Documents
-- Problem: Out of memory when processing large texts
-- Solution: Enable text chunking:
-  - Break down large documents into smaller chunks (max 512 tokens)
-  - Process chunks sequentially
+3. Problemas de Memória com Documentos Grandes
+- Problema: Memória insuficiente ao processar textos longos
+- Solução: Habilite divisão de texto
+  - Divida documentos grandes em fragmentos menores (máximo 512 tokens)
+  - Processe fragmentos sequencialmente
 
-## Data Flow
-The system processes regulatory texts through multiple stages of analysis, from text preprocessing to knowledge graph integration. The core workflow transforms raw regulatory text into structured insights about changes and relationships between regulations.
+## Fluxo de Dados com Graph Neural Networks (GNN)
+O sistema processa textos regulatórios através de múltiplos estágios de análise, com ênfase especial nas Graph Neural Networks para capturar relações complexas entre regulações.
 
 ```ascii
-[Raw Text] -> [Preprocessing] -> [Embedding Generation] -> [Change Analysis] -> [Knowledge Graph]
+[Texto Bruto] -> [Pré-processamento] -> [Geração de Embeddings] -> [Análise com GNN] -> [Grafo de Conhecimento]
      |              |                    |                        |                  |
      v              v                    v                        v                  v
-  Input Text -> Clean Text -> Vector Representation -> Change Detection -> Graph Storage
+  Texto de Entrada -> Texto Limpo -> Representação Vetorial -> Detecção de Mudanças -> Armazenamento em Grafo
 ```
 
-Key component interactions:
-1. Text preprocessing removes noise and normalizes the input
-2. Azure OpenAI generates text embeddings for similarity analysis
-3. Azure Language Service extracts key phrases and entities
-4. Change detection compares versions using multiple algorithms
-5. Results are stored in both Cosmos DB (graph) and Blob Storage (embeddings)
-6. FastAPI endpoints provide access to analysis results
-7. The knowledge graph maintains relationships between regulations
-```
+Interações de componentes-chave:
+1. Pré-processamento remove ruídos e normaliza a entrada
+2. Azure OpenAI gera embeddings de texto para análise de similaridade
+3. Serviço de Linguagem Azure extrai frases-chave e entidades
+4. Detecção de mudanças compara versões usando múltiplos algoritmos
+5. Graph Neural Networks analisam padrões e relacionamentos entre regulações
+6. Resultados são armazenados no Cosmos DB e Blob Storage
+7. Endpoints FastAPI fornecem acesso aos resultados de análise
 
-Este README fornece uma visão geral completa do sistema, incluindo sua estrutura, como configurá-lo e usá-lo, além de solucionar problemas comuns. Ele destaca as principais funcionalidades e o fluxo de dados do sistema de análise regulatória.
+## Tecnologias GNN Utilizadas
+- Graph Convolutional Network (GCN)
+- GraphSAGE
+- Graph Attention Network (GAT)
+
+Cada variante de GNN permite capturar diferentes aspectos das relações entre regulações, proporcionando insights mais profundos sobre a evolução dos textos regulatórios.
+
+---
+
+By Marcos Teixeira
