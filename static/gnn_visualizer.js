@@ -12,22 +12,29 @@ class GNNVisualizer {
 
     async fetchGNNData() {
         try {
-            // Primeiro, verificar se já temos embeddings GNN
+            // First, check if we already have GNN embeddings
             const response = await fetch(`${API_BASE_URL}/gnn-status`);
             const status = await response.json();
             
             if (!status.has_gnn_embeddings) {
-                // Iniciar treinamento GNN se não tiver embeddings
+                console.log("No GNN embeddings found. Training GNN...");
+                // Initiate GNN training if no embeddings
                 await this.trainGNN();
             }
             
-            // Buscar dados do grafo enriquecido
+            // Fetch enriched graph data
+            console.log("Fetching GNN graph data...");
             const dataResponse = await fetch(`${API_BASE_URL}/gnn-graph-data`);
+            if (!dataResponse.ok) {
+                throw new Error(`Error fetching GNN data: ${dataResponse.status}`);
+            }
+            
             this.gnnData = await dataResponse.json();
+            console.log("GNN data received:", this.gnnData);
             
             return this.gnnData;
         } catch (error) {
-            console.error("Erro ao buscar dados GNN:", error);
+            console.error("Error fetching GNN data:", error);
             return null;
         }
     }
@@ -57,8 +64,11 @@ class GNNVisualizer {
     }
     
     visualize() {
-        if (!this.gnnData) {
-            this.container.innerHTML = '<div class="alert alert-warning">Nenhum dado GNN disponível.</div>';
+        console.log("Visualizing GNN data:", this.gnnData);
+        
+        if (!this.gnnData || !this.gnnData.nodes || this.gnnData.nodes.length === 0) {
+            console.warn("No GNN data available for visualization");
+            this.container.innerHTML = '<div class="alert alert-warning">Nenhum dado GNN disponível. Por favor, treine o modelo GNN primeiro.</div>';
             return;
         }
         

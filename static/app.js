@@ -58,7 +58,40 @@ async function getPredictionsWithoutModal() {
 
 
 document.addEventListener('DOMContentLoaded', function() {
+
+    const gnnVisualizer = new GNNVisualizer('gnn-visualizer');
+        gnnVisualizer.fetchGNNData().then(() => {
+            gnnVisualizer.visualize();
+        });
     
+        document.getElementById('train-gnn-btn').addEventListener('click', async function() {
+            try {
+                showLoadingModal("Treinando modelo GNN...");
+                
+                const response = await fetch(`${API_BASE_URL}/enrich-embeddings`, {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Erro ao treinar GNN: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                alert(`Modelo GNN treinado com sucesso! Processados ${result.node_count} nós.`);
+                
+                // Initialize the GNN visualizer again with the new data
+                const gnnVisualizer = new GNNVisualizer('gnn-visualizer');
+                await gnnVisualizer.fetchGNNData();
+                gnnVisualizer.visualize();
+                
+                hideLoadingModal();
+            } catch (error) {
+                console.error("Erro ao treinar GNN:", error);
+                alert(`Erro ao treinar o modelo GNN: ${error.message}`);
+                hideLoadingModal();
+            }
+        });
+        
     const cancelBtn = document.getElementById('cancel-loading-btn');
     if (cancelBtn) {
         cancelBtn.addEventListener('click', hideLoadingModal);
