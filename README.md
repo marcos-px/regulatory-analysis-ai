@@ -1,6 +1,3 @@
-Vou compartilhar o conteúdo do README.md deste projeto. Pelo que vejo nos arquivos, este é um sistema de análise de textos regulatórios que usa IA para detectar e prever mudanças em regulamentações.
-
-```markdown
 # Regulatory Text Analysis API: Intelligent Analysis of Regulatory Changes
 
 The Regulatory Text Analysis API is a sophisticated system that analyzes and tracks changes in regulatory texts using advanced natural language processing and graph-based analytics. It provides automated analysis of regulatory documents, extracts key changes, and builds a knowledge graph to track the evolution of regulations over time.
