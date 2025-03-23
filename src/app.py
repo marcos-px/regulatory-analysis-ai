@@ -186,21 +186,26 @@ async def compare_regulations(
             "gpt_analysis": None
         }
 
-@app.get("/predictions")
+@app.post("/predictions")
 async def get_predictions(
-    num_predictions: int = 1, 
-    use_gpt: bool = True,
+    request: PredictionRequest = Body(...),
     analyzer: RegulatoryChangeAnalyzer = Depends(get_analyzer)
 ):
-    """Obter previsões de mudanças futuras"""
+    """Obter previsões de mudanças futuras com base em um texto específico"""
     try:
-        if use_gpt:
-            predictions = await analyzer.predict_future_changes_with_gpt(num_predictions)
+        text = request.text if hasattr(request, 'text') else None
+        num_predictions = request.num_predictions or 1
+
+        if text:
+            predictions = await analyzer.predict_future_changes_with_text(text, num_predictions)
         else:
-            predictions = await analyzer.predict_future_changes(num_predictions)
+            predictions = await analyzer.predict_future_changes_with_gpt(num_predictions)
             
         return predictions
     except Exception as e:
+        import traceback
+        print(f"Erro ao gerar previsões: {str(e)}")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/knowledge-graph")

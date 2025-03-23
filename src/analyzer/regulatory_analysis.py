@@ -247,8 +247,8 @@ class RegulatoryChangeAnalyzer:
                     {"role": "system", "content": "Você é um especialista em análise de tendências regulatórias."},
                     {"role": "user", "content": prompt}
                 ],
-                "temperature": 0.7,
-                "max_tokens": 800,
+                "temperature": 0.9,
+                "max_tokens": 8000,
                 "model": "Phi-4-multimodal-instruct"
             }
             
@@ -493,8 +493,8 @@ Gere apenas o JSON válido, sem texto introdutório ou de fechamento.
                     {"role": "system", "content": "Você é um especialista em análise de tendências regulatórias."},
                     {"role": "user", "content": prompt}
                 ],
-                "temperature": 0.7,
-                "max_tokens": 800,
+                "temperature": 0.9,
+                "max_tokens": 8000,
                 "model": "Phi-4-multimodal-instruct"
             }
             
@@ -1026,6 +1026,82 @@ Gere apenas o JSON válido, sem texto introdutório ou de fechamento.
         
         return serializable_changes
 
+    async def predict_future_changes_with_text(self, text, num_predictions=1):
+        """Prever mudanças futuras com base em um texto específico usando IA"""
+        try:
+            regulations = await self.get_all_regulations()
+            sorted_regulations = sorted(regulations, key=lambda x: x.get('date', ''))
+            
+            regulations_history = []
+            for i, reg in enumerate(sorted_regulations):
+                regulations_history.append(f"Regulação {i+1} ({reg['date']}): {reg['text']}")
+            
+            changes_history = []
+            for i in range(1, len(sorted_regulations)):
+                prev_reg = sorted_regulations[i-1]
+                curr_reg = sorted_regulations[i]
+                changes = self.extract_key_changes(prev_reg['text'], curr_reg['text'])
+                
+                changes_summary = []
+                if 'numerical_changes' in changes and changes['numerical_changes']:
+                    for pair in changes['numerical_changes']:
+                        if isinstance(pair, (list, tuple)) and len(pair) == 2:
+                            changes_summary.append(f"Alteração numérica: {pair[0]} → {pair[1]}")
+                
+                if 'text_diff_blocks' in changes:
+                    for block in changes['text_diff_blocks']:
+                        if block.get('opcode') == 'replace':
+                            changes_summary.append(f"Substituição: '{block.get('old_text', '')}' → '{block.get('new_text', '')}'")
+                        elif block.get('opcode') == 'insert':
+                            changes_summary.append(f"Adição: '{block.get('new_text', '')}'")
+                        elif block.get('opcode') == 'delete':
+                            changes_summary.append(f"Remoção: '{block.get('old_text', '')}'")
+                
+                changes_history.append({
+                    "from": prev_reg['date'],
+                    "to": curr_reg['date'],
+                    "changes": changes_summary
+                })
+            
+            key_phrases = self.analyze_key_phares(text)
+            
+            prompt = f"""Você é um especialista em análise de tendências regulatórias com conhecimento profundo de regulações financeiras. 
+            
+    HISTÓRICO DE REGULAÇÕES:
+    {regulations_history[-3:] if len(regulations_history) > 3 else regulations_history}
+
+    TEXTO ATUAL PARA PREVISÃO:
+    {text}
+
+    FRASES-CHAVE IDENTIFICADAS:
+    {', '.join(key_phrases) if key_phrases else 'Nenhuma frase-chave identificada'}
+
+    Com base no texto atual e no contexto histórico, gere {num_predictions} previsões específicas e detalhadas sobre como este texto regulatório poderá evoluir no futuro. 
+    Sua previsão deve:
+    1. Identificar trechos específicos do texto fornecido que provavelmente mudarão
+    2. Prever como esses trechos serão modificados (exemplo: percentuais que aumentarão/diminuirão, requisitos que serão flexibilizados/endurecidos, etc.)
+    3. Fornecer uma explicação contextual para cada previsão, baseada nas tendências observadas
+
+    Formate cada previsão como um objeto JSON seguindo exatamente esta estrutura:
+    {{
+        "type": "textual",
+        "current_text": "Trecho específico do texto atual que provavelmente mudará",
+        "predicted_text": "Como esse trecho provavelmente ficará na próxima versão",
+        "confidence": valor de confiança entre 0.0 e 1.0,
+        "explanation": "Explicação detalhada que justifica essa previsão"
+    }}
+
+    Suas previsões devem ser específicas, baseadas no texto fornecido, e não genéricas. Formate sua resposta como um array JSON contendo {num_predictions} objetos de previsão.
+            """
+            
+            predictions = await self._get_gpt_predictions(prompt)
+            return predictions
+        except Exception as e:
+            import traceback
+            print(f"Erro ao gerar previsões com texto específico: {str(e)}")
+            print(traceback.format_exc())
+            return []
+
     async def predict_future_changes(self, num_predictions=1):
         """Prever mudanças futuras com base nas tendências históricas usando IA"""
         if len(self.knowledge_graph.nodes) < 2:
@@ -1135,8 +1211,8 @@ Gere apenas o JSON válido, sem texto introdutório ou de fechamento.
                     {"role": "system", "content": "Você é um especialista em análise de tendências regulatórias."},
                     {"role": "user", "content": prompt}
                 ],
-                "temperature": 0.7,
-                "max_tokens": 800,
+                "temperature": 0.9,
+                "max_tokens": 8000,
                 "model": "Phi-4-multimodal-instruct"
             }
             
