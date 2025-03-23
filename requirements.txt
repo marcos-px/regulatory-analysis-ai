@@ -25,3 +25,4 @@ azure-ai-textanalytics
 openai
 python-multipart
 dotenv
+aiohttp

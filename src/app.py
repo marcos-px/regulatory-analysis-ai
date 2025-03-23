@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Body, File, UploadFile, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+import io
 import os
 import json
 from datetime import datetime
@@ -123,10 +124,11 @@ async def get_regulation(regulation_id: str, analyzer: RegulatoryChangeAnalyzer 
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
+        
 @app.post("/compare")
 async def compare_regulations(
     comparison: RegulationComparison, 
+    use_gpt: bool = True,
     analyzer: RegulatoryChangeAnalyzer = Depends(get_analyzer)
 ):
     """Comparar dois textos regulatórios e calcular similaridade"""
@@ -162,10 +164,15 @@ async def compare_regulations(
                     old_val, new_val = pair
                     key_differences.append(f"Alteração numérica: {old_val} -> {new_val}")
         
+        analysis = None
+        if use_gpt:
+            analysis = await analyzer._get_comparison_analysis_with_gpt(text1, text2, similarity, key_differences)
+        
         return {
             "similarity": similarity,
             "key_differences": key_differences,
-            "raw_changes": changes
+            "raw_changes": changes,
+            "gpt_analysis": analysis
         }
     except Exception as e:
         import traceback
@@ -175,16 +182,23 @@ async def compare_regulations(
         return {
             "similarity": 0.5,
             "key_differences": ["Erro ao processar diferenças: " + str(e)],
-            "raw_changes": {}
+            "raw_changes": {},
+            "gpt_analysis": None
         }
 
 @app.get("/predictions")
 async def get_predictions(
     num_predictions: int = 1, 
+    use_gpt: bool = True,
     analyzer: RegulatoryChangeAnalyzer = Depends(get_analyzer)
 ):
+    """Obter previsões de mudanças futuras"""
     try:
-        predictions = await analyzer.predict_future_changes(num_predictions)
+        if use_gpt:
+            predictions = await analyzer.predict_future_changes_with_gpt(num_predictions)
+        else:
+            predictions = await analyzer.predict_future_changes(num_predictions)
+            
         return predictions
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -193,30 +207,11 @@ async def get_predictions(
 async def get_knowledge_graph(analyzer: RegulatoryChangeAnalyzer = Depends(get_analyzer)):
     """Obter o grafo de conhecimento em formato JSON"""
     try:
-        nodes = []
-        for node_id in analyzer.knowledge_graph.nodes:
-            node_data = analyzer.knowledge_graph.nodes[node_id]
-            nodes.append({
-                "id": node_id,
-                "date": node_data.get("date"),
-                "key_phrases": node_data.get("key_phrases", [])
-            })
-        
-        edges = []
-        for source, target, data in analyzer.knowledge_graph.edges(data=True):
-            edges.append({
-                "source": source,
-                "target": target,
-                "similarity": data.get("similarity", 0),
-                "has_changes": "changes" in data
-            })
-        
-        return {
-            "nodes": nodes,
-            "edges": edges
-        }
+        return await analyzer.get_knowledge_graph()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Erro ao obter grafo de conhecimento: {str(e)}")
+        return {"nodes": [], "edges": []}
+
 
 @app.get("/visualize")
 async def visualize_graph(analyzer: RegulatoryChangeAnalyzer = Depends(get_analyzer)):
@@ -281,40 +276,19 @@ async def startup_event():
     global analyzer
     analyzer = RegulatoryChangeAnalyzer()
     
-    print("Inicializando apenas com grafo local e Blob Storage")
+    print("Inicializando API de Análise Regulatória")
     
     try:
         existing_regulations = await analyzer.get_all_regulations()
         
-        if not existing_regulations:
-            print("Inicializando grafo com regulações de exemplo...")
+        if existing_regulations:
+            print(f"Carregadas {len(existing_regulations)} regulações existentes")
+        else:
+            print("Nenhuma regulação encontrada")
             
-            regulations = [
-                {
-                    "id": "reg1",
-                    "date": "outubro de 2024",
-                    "text": "Dispõe sobre a constituição, a administração, o funcionamento e a divulgação das informações dos fundos de investimento. Investidores estrangeiros podem deter até 20% das ações com direito a voto."
-                },
-                {
-                    "id": "reg2",
-                    "date": "dezembro de 2024",
-                    "text": "Dispõe sobre a constituição, a administração, o funcionamento e a divulgação das informações dos fundos de investimento. Investidores estrangeiros podem deter até 30% das ações com direito a voto."
-                },
-                {
-                    "id": "reg3",
-                    "date": "fevereiro de 2025",
-                    "text": "Dispõe sobre a constituição, a administração, o funcionamento e a divulgação das informações dos fundos de investimento. Não há limite para a participação de investidores estrangeiros nas ações com direito a voto."
-                }
-            ]
-            
-            prev_id = None
-            for reg in regulations:
-                await analyzer.add_to_knowledge_graph(reg["id"], reg["date"], reg["text"], prev_id)
-                prev_id = reg["id"]
-                
-            print("Regulações de exemplo adicionadas com sucesso!")
+        print("Inicialização concluída com sucesso!")
     except Exception as e:
-        print(f"Erro ao carregar regulações de exemplo: {str(e)}")
+        print(f"Erro ao inicializar: {str(e)}")
 
 @app.on_event("shutdown")
 async def shutdown_event():

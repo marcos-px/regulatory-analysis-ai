@@ -575,12 +575,38 @@ function displayComparisonResults(result) {
         item.textContent = 'Nenhuma diferença significativa detectada';
         differencesList.appendChild(item);
     }
+    
+    // Exibir análise do GPT se disponível
+    if (result.gpt_analysis) {
+        // Criar uma nova seção para a análise do GPT
+        const gptAnalysisDiv = document.createElement('div');
+        gptAnalysisDiv.className = 'mt-4';
+        gptAnalysisDiv.innerHTML = `
+            <h4>Análise Inteligente</h4>
+            <div class="card">
+                <div class="card-header">Interpretação das Mudanças</div>
+                <div class="card-body">
+                    <h5>Principais Mudanças</h5>
+                    <p>${result.gpt_analysis.main_changes}</p>
+                    
+                    <h5>Propósito</h5>
+                    <p>${result.gpt_analysis.purpose}</p>
+                    
+                    <h5>Impacto Potencial</h5>
+                    <p>${result.gpt_analysis.impact}</p>
+                    
+                    <h5>Tendências Futuras</h5>
+                    <p>${result.gpt_analysis.future_trends}</p>
+                </div>
+            </div>
+        `;
+        
+        resultsDiv.appendChild(gptAnalysisDiv);
+    }
 }
 
 function displayPredictions(predictions) {
     const container = document.getElementById('predictions-container');
-    
-    console.log('Exibindo previsões:', predictions);
     
     if (!predictions || predictions.length === 0) {
         container.innerHTML = '<p class="text-center text-muted">Nenhuma previsão disponível</p>';
@@ -593,11 +619,17 @@ function displayPredictions(predictions) {
         const item = document.createElement('div');
         item.className = 'prediction-item mb-3 p-3 border rounded fade-in';
         
-        // Verificar o tipo de previsão (numérica ou textual)
+        // Verificar o tipo de previsão
         const predictionType = prediction.type || (prediction.current_value ? "numerical" : "textual");
         
         if (predictionType === "numerical" || prediction.current_value) {
-            // Previsão numérica
+            // Incluir explicação se disponível
+            const explanation = prediction.explanation ? 
+                `<div class="mt-2 pb-2 border-top pt-2">
+                    <h6 class="mb-1">Explicação:</h6>
+                    <p class="mb-0 text-muted">${prediction.explanation}</p>
+                </div>` : '';
+                
             const content = `
                 <h5>Alteração Numérica Prevista</h5>
                 <div class="d-flex justify-content-between align-items-center">
@@ -615,11 +647,18 @@ function displayPredictions(predictions) {
                             aria-valuenow="${prediction.confidence * 100}" aria-valuemin="0" aria-valuemax="100"></div>
                     </div>
                 </div>
+                ${explanation}
             `;
             
             item.innerHTML = content;
         } else if (predictionType === "textual" || prediction.current_text) {
-            // Previsão textual
+            // Incluir explicação se disponível
+            const explanation = prediction.explanation ? 
+                `<div class="mt-2 pb-2 border-top pt-2">
+                    <h6 class="mb-1">Explicação:</h6>
+                    <p class="mb-0 text-muted">${prediction.explanation}</p>
+                </div>` : '';
+                
             const content = `
                 <h5>Alteração Textual Prevista</h5>
                 <div class="mb-2">
@@ -640,11 +679,11 @@ function displayPredictions(predictions) {
                             aria-valuenow="${prediction.confidence * 100}" aria-valuemin="0" aria-valuemax="100"></div>
                     </div>
                 </div>
+                ${explanation}
             `;
             
             item.innerHTML = content;
         } else {
-            // Formato desconhecido
             item.innerHTML = `<div class="alert alert-warning">Formato de previsão não reconhecido</div>`;
         }
         
