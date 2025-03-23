@@ -1,0 +1,165 @@
+/* styles.css */
+
+body {
+    background-color: #f8f9fa;
+}
+
+.section {
+    display: none;
+}
+
+.section.active {
+    display: block;
+}
+
+/* Estilos para o gauge de similaridade */
+.similarity-gauge {
+    width: 150px;
+    height: 150px;
+    margin: 0 auto;
+    position: relative;
+    border-radius: 50%;
+    background: conic-gradient(#198754 0%, #ffc107 50%, #dc3545 100%);
+}
+
+.similarity-gauge::before {
+    content: '';
+    position: absolute;
+    top: 10%;
+    left: 10%;
+    width: 80%;
+    height: 80%;
+    background-color: white;
+    border-radius: 50%;
+}
+
+.gauge-value {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 24px;
+    font-weight: bold;
+}
+
+/* Estilos para o grafo de conhecimento */
+#knowledge-graph-container svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.node {
+    cursor: pointer;
+}
+
+.node circle {
+    fill: #4299e1;
+    stroke: #2b6cb0;
+    stroke-width: 2px;
+}
+
+.node.highlighted circle {
+    fill: #f6ad55;
+    stroke: #dd6b20;
+}
+
+.node text {
+    font-family: 'Arial', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.link {
+    stroke: #a0aec0;
+    stroke-opacity: 0.6;
+}
+
+.link.highlighted {
+    stroke: #f6ad55;
+    stroke-opacity: 1;
+    stroke-width: 3px;
+}
+
+#timeline-container {
+    position: relative;
+}
+
+.timeline-item {
+    position: absolute;
+    cursor: pointer;
+    border: 2px solid #4299e1;
+    background-color: white;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    transform: translate(-50%, -50%);
+}
+
+.timeline-item:hover {
+    background-color: #4299e1;
+}
+
+.timeline-item.selected {
+    border-color: #dd6b20;
+    background-color: #f6ad55;
+}
+
+.timeline-label {
+    position: absolute;
+    transform: translate(-50%, 20px);
+    text-align: center;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.timeline-line {
+    position: absolute;
+    height: 2px;
+    background-color: #a0aec0;
+}
+
+.prediction-item {
+    padding: 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    margin-bottom: 10px;
+}
+
+.prediction-item .confidence-bar {
+    height: 5px;
+    background-color: #e2e8f0;
+    border-radius: 2px;
+    margin-top: 5px;
+}
+
+.prediction-item .confidence-value {
+    height: 100%;
+    background-color: #4299e1;
+    border-radius: 2px;
+}
+
+.fade-in {
+    animation: fadeIn 0.5s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@media (max-width: 768px) {
+    #mini-graph-container, 
+    #knowledge-graph-container {
+        height: 300px !important;
+    }
+    
+    .similarity-gauge {
+        width: 120px;
+        height: 120px;
+    }
+    
+    .gauge-value {
+        font-size: 18px;
+    }
+}
