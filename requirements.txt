@@ -26,3 +26,9 @@ openai
 python-multipart
 dotenv
 aiohttp
+torch
+torch-geometric
+dgl
+networkx
+scikit-learn
+numpy

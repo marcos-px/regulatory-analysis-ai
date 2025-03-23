@@ -186,6 +186,8 @@ async def compare_regulations(
             "gpt_analysis": None
         }
 
+
+
 @app.post("/predictions")
 async def get_predictions(
     request: PredictionRequest = Body(...),
@@ -208,6 +210,8 @@ async def get_predictions(
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
 @app.get("/knowledge-graph")
 async def get_knowledge_graph(analyzer: RegulatoryChangeAnalyzer = Depends(get_analyzer)):
     """Obter o grafo de conhecimento em formato JSON"""
@@ -216,6 +220,88 @@ async def get_knowledge_graph(analyzer: RegulatoryChangeAnalyzer = Depends(get_a
     except Exception as e:
         print(f"Erro ao obter grafo de conhecimento: {str(e)}")
         return {"nodes": [], "edges": []}
+
+
+
+@app.post("/enrich-embeddings")
+async def enrich_embeddings(analyzer: RegulatoryChangeAnalyzer = Depends(get_analyzer)):
+    """Enriquecer embeddings usando Graph Neural Networks"""
+    try:
+        success = await analyzer.enrich_embeddings_with_gnn()
+        
+        if success:
+            return {
+                "status": "success",
+                "message": "Embeddings enriquecidos com GNN com sucesso",
+                "node_count": len(analyzer.gnn_embeddings)
+            }
+        else:
+            raise HTTPException(
+                status_code=500, 
+                detail="Falha ao enriquecer embeddings com GNN"
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@app.post("/compare-with-gnn")
+async def compare_with_gnn(
+    comparison: RegulationComparison,
+    use_gnn: bool = True,
+    analyzer: RegulatoryChangeAnalyzer = Depends(get_analyzer)
+):
+    """Comparar regulações usando embeddings enriquecidos por GNN"""
+    try:
+        text1 = comparison.text1
+        text2 = comparison.text2
+        
+        similarity = analyzer.calculate_similarity_with_gnn(text1, text2, use_gnn=use_gnn)
+        
+        changes = analyzer.extract_key_changes(text1, text2)
+        
+        key_differences = []
+        
+        diff_blocks = changes.get("text_diff_blocks", [])
+        if isinstance(diff_blocks, list):
+            for diff_block in diff_blocks:
+                if isinstance(diff_block, dict):
+                    opcode = diff_block.get("opcode")
+                    old_text = diff_block.get("old_text", "")
+                    new_text = diff_block.get("new_text", "")
+                    
+                    if opcode == "replace":
+                        key_differences.append(f"Substituição: '{old_text}' -> '{new_text}'")
+                    elif opcode == "insert":
+                        key_differences.append(f"Inserção: '{new_text}'")
+                    elif opcode == "delete":
+                        key_differences.append(f"Remoção: '{old_text}'")
+        
+        numerical_changes = changes.get("numerical_changes", [])
+        if isinstance(numerical_changes, list):
+            for pair in numerical_changes:
+                if isinstance(pair, (list, tuple)) and len(pair) == 2:
+                    old_val, new_val = pair
+                    key_differences.append(f"Alteração numérica: {old_val} -> {new_val}")
+        
+        return {
+            "similarity": similarity,
+            "key_differences": key_differences,
+            "raw_changes": changes,
+            "used_gnn": use_gnn and len(analyzer.gnn_embeddings) > 0
+        }
+    except Exception as e:
+        import traceback
+        print(f"Erro ao comparar regulações: {str(e)}")
+        print(traceback.format_exc())
+        
+        return {
+            "similarity": 0.5,
+            "key_differences": ["Erro ao processar diferenças: " + str(e)],
+            "raw_changes": {},
+            "used_gnn": False
+        }
+
 
 
 @app.get("/visualize")
@@ -274,6 +360,98 @@ async def upload_regulation(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/gnn-status")
+async def get_gnn_status(analyzer: RegulatoryChangeAnalyzer = Depends(get_analyzer)):
+    """Verificar status dos embeddings GNN"""
+    try:
+        has_gnn = hasattr(analyzer, 'gnn_embeddings') and analyzer.gnn_embeddings
+        return {
+            "has_gnn_embeddings": bool(has_gnn),
+            "node_count": len(analyzer.gnn_embeddings) if has_gnn else 0
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/gnn-graph-data")
+async def get_gnn_graph_data(analyzer: RegulatoryChangeAnalyzer = Depends(get_analyzer)):
+    """Obter dados do grafo enriquecido com GNN"""
+    try:
+        # Verificar se temos embeddings GNN
+        if not hasattr(analyzer, 'gnn_embeddings') or not analyzer.gnn_embeddings:
+            raise HTTPException(status_code=400, detail="Embeddings GNN não disponíveis. Use /enrich-embeddings primeiro.")
+        
+        # Obter dados do grafo
+        graph_data = await analyzer.get_knowledge_graph()
+        
+        # Enriquecer com informações de GNN
+        nodes = graph_data['nodes']
+        
+        # Extrair todos os embeddings para análise de cluster
+        node_embeddings = []
+        node_ids = []
+        for node in nodes:
+            node_id = node['id']
+            if node_id in analyzer.gnn_embeddings:
+                node_embeddings.append(analyzer.gnn_embeddings[node_id])
+                node_ids.append(node_id)
+        
+        # Calcular clusters se tivermos embeddings suficientes
+        if len(node_embeddings) >= 2:
+            from sklearn.cluster import KMeans
+            import numpy as np
+            
+            # Determinar número de clusters (máximo de 5)
+            n_clusters = min(5, len(node_embeddings))
+            
+            # Aplicar K-means
+            kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+            clusters = kmeans.fit_predict(np.array(node_embeddings))
+            
+            # Adicionar clusters aos nós
+            cluster_map = {node_id: int(cluster) for node_id, cluster in zip(node_ids, clusters)}
+            
+            # Calcular projeção para visualização de evolução
+            ordered_nodes = sorted([(node_id, analyzer.knowledge_graph.nodes[node_id].get('date', '')) 
+                                   for node_id in node_ids if node_id in analyzer.knowledge_graph.nodes],
+                                  key=lambda x: x[1])
+            
+            if len(ordered_nodes) >= 2:
+                # Criar vetor direcional do primeiro ao último nó
+                first_node, _ = ordered_nodes[0]
+                last_node, _ = ordered_nodes[-1]
+                
+                direction = np.array(analyzer.gnn_embeddings[last_node]) - np.array(analyzer.gnn_embeddings[first_node])
+                direction_norm = np.linalg.norm(direction)
+                
+                # Calcular projeções se o vetor não for nulo
+                projection_map = {}
+                if direction_norm > 0:
+                    unit_direction = direction / direction_norm
+                    for node_id, emb in analyzer.gnn_embeddings.items():
+                        node_vector = np.array(emb) - np.array(analyzer.gnn_embeddings[first_node])
+                        projection = float(np.dot(node_vector, unit_direction))
+                        projection_map[node_id] = projection
+            
+            # Enriquecer nós com informações de GNN
+            for node in nodes:
+                node_id = node['id']
+                if node_id in cluster_map:
+                    node['cluster'] = cluster_map[node_id]
+                if node_id in projection_map:
+                    node['projection'] = projection_map[node_id]
+        
+        return {
+            "nodes": nodes,
+            "edges": graph_data['edges']
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.on_event("startup")
 async def startup_event():
