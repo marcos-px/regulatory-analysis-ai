@@ -19,6 +19,9 @@ azure-mgmt-storage
 azure-storage-blob 
 azure-cosmos 
 azure-cognitiveservices-language-textanalytics 
+azure-ai-inference
 msrest
 azure-ai-textanalytics
 openai
+python-multipart
+dotenv
