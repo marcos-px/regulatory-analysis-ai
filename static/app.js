@@ -8,6 +8,16 @@ let state = {
     selectedText: null
 };
 
+function checkElementExists(id) {
+    const element = document.getElementById(id);
+    if (!element) {
+        console.error(`Elemento com ID "${id}" não foi encontrado!`);
+        return false;
+    }
+    console.log(`Elemento com ID "${id}" encontrado.`);
+    return true;
+}
+
 async function getPredictionsWithoutModal() {
     try {
         const text = document.getElementById('text2').value;
@@ -65,21 +75,34 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     
         document.getElementById('train-gnn-btn').addEventListener('click', async function() {
+            console.log("Botão de treinar GNN foi clicado!");
             try {
                 showLoadingModal("Treinando modelo GNN...");
                 
+                console.log("Enviando requisição para enriquecer embeddings...");
                 const response = await fetch(`${API_BASE_URL}/enrich-embeddings`, {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
                 });
                 
+                console.log("Resposta recebida:", response.status);
+                
                 if (!response.ok) {
-                    throw new Error(`Erro ao treinar GNN: ${response.status}`);
+                    const errorText = await response.text();
+                    console.error(`Erro HTTP: ${response.status} - ${errorText}`);
+                    throw new Error(`Erro ao treinar GNN: ${response.status}. Detalhes: ${errorText}`);
                 }
                 
                 const result = await response.json();
+                console.log("Resultado do treinamento:", result);
+                
                 alert(`Modelo GNN treinado com sucesso! Processados ${result.node_count} nós.`);
                 
                 // Initialize the GNN visualizer again with the new data
+                console.log("Reinicializando o visualizador GNN...");
                 const gnnVisualizer = new GNNVisualizer('gnn-visualizer');
                 await gnnVisualizer.fetchGNNData();
                 gnnVisualizer.visualize();

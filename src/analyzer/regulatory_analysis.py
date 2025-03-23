@@ -414,19 +414,29 @@ class RegulatoryChangeAnalyzer:
             print(f"Aviso: Erro ao salvar relacionamento: {str(e)}")
     
     async def enrich_embeddings_with_gnn(self):
-
         try:
-            print("Iniciando enriquecimento de embeddings com GNN...")
+            print("Método enrich_embeddings_with_gnn foi chamado!")
+            print(f"Número de nós no grafo: {len(self.knowledge_graph.nodes)}")
             
+            if len(self.knowledge_graph.nodes) < 2:
+                print("Grafo não tem nós suficientes para GNN (mínimo 2)")
+                return False
+            
+            print("Garantindo que todos os nós tenham embeddings...")
             await self._ensure_graph_has_embeddings()
             
+            print("Convertendo grafo NetworkX para formato PyTorch Geometric...")
             graph_data, node_mapping = self.gnn_processor.networkx_to_pytorch_geometric(
                 self.knowledge_graph
             )
             
+            print("Inicializando modelo GNN...")
             self.gnn_processor.init_model(model_type='gcn')
+            
+            print("Treinando modelo GNN...")
             self.gnn_processor.train(graph_data, epochs=50)
             
+            print("Extraindo embeddings enriquecidos...")
             self.gnn_embeddings = self.gnn_processor.get_node_embeddings(
                 graph_data, node_mapping
             )
@@ -434,8 +444,8 @@ class RegulatoryChangeAnalyzer:
             print(f"Enriquecimento com GNN concluído. Processados {len(self.gnn_embeddings)} nós.")
             return True
         except Exception as e:
-            print(f"Erro ao enriquecer embeddings com GNN: {str(e)}")
             import traceback
+            print(f"Erro ao enriquecer embeddings com GNN: {str(e)}")
             print(traceback.format_exc())
             return False
 
@@ -582,10 +592,8 @@ class RegulatoryChangeAnalyzer:
             for item in change['changes']:
                 changes_text += f"- {item}\n"
         
-        # Extrair insights estruturais do GNN
         insights_text = "\nINSIGHTS ESTRUTURAIS DE GNN:\n"
         
-        # Adicionar insights de clusters
         cluster_insights = [i for i in structural_insights if 'cluster_id' in i]
         if cluster_insights:
             insights_text += "\nGrupos de regulações similares identificados:\n"
@@ -595,7 +603,6 @@ class RegulatoryChangeAnalyzer:
                     insights_text += f"Temas comuns: {', '.join(insight['common_phrases'][:3])}"
                 insights_text += f" ({insight['node_count']} regulações)\n"
         
-        # Adicionar insights direcionais
         direction_insights = [i for i in structural_insights if i.get('type') == 'evolution_direction']
         if direction_insights:
             insights_text += "\nDireção de evolução regulatória detectada:\n"
