@@ -1,3 +1,6 @@
+Vou compartilhar o conteúdo do README.md deste projeto. Pelo que vejo nos arquivos, este é um sistema de análise de textos regulatórios que usa IA para detectar e prever mudanças em regulamentações.
+
+```markdown
 # Regulatory Text Analysis API: Intelligent Analysis of Regulatory Changes
 
 The Regulatory Text Analysis API is a sophisticated system that analyzes and tracks changes in regulatory texts using advanced natural language processing and graph-based analytics. It provides automated analysis of regulatory documents, extracts key changes, and builds a knowledge graph to track the evolution of regulations over time.
@@ -139,3 +142,6 @@ Key component interactions:
 5. Results are stored in both Cosmos DB (graph) and Blob Storage (embeddings)
 6. FastAPI endpoints provide access to analysis results
 7. The knowledge graph maintains relationships between regulations
+```
+
+Este README fornece uma visão geral completa do sistema, incluindo sua estrutura, como configurá-lo e usá-lo, além de solucionar problemas comuns. Ele destaca as principais funcionalidades e o fluxo de dados do sistema de análise regulatória.
